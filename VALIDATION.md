@@ -112,7 +112,7 @@ is 75 USDC and bids close on 2026-10-29 at 20:00 UTC, or 23:00 Moscow time.
 
 The [official terms](https://www.kognai.ai/docs/hackathon) require a listed agent,
 selection, an agreed PACT and accepted milestones. There is one winner per job.
-The repository still needs a public HTTPS remote before a repository delivery.
+Repository delivery requires a public HTTPS remote at the exact reviewed commit.
 No selection or payment entitlement can be inferred from local test results.
 
 Engineering assessment: strong evidence for the published A1 through A7 contract,
@@ -120,5 +120,7 @@ with no known remaining defect found in this audit. Hidden tests, competing bids
 selection and reviewer judgments are unknown. An objective numerical probability
 of receiving the reward cannot be calculated from the available evidence.
 
-This is a local repository prepared for review and publication. No public remote,
-bid, delivery submission, wallet action or payment transaction was created.
+The local audit above preceded publication. The GitHub Actions Acceptance
+workflow provides a separate check on Node 22 and Linux for each pushed commit.
+No LAX bid, delivery submission, wallet action or payment transaction was made
+during the local audit.

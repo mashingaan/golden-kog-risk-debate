@@ -17,6 +17,7 @@ npm run build
 Only the initial development dependency installation needs network access.
 Tests use Node's built in test runner and fake model adapters, without network.
 There is no lint script. TypeScript checks strict types and unused declarations.
+GitHub Actions runs these checks on Node 22 and Linux for each pushed commit.
 
 ## Call flow
 
