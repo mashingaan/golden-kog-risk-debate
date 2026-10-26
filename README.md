@@ -102,9 +102,10 @@ Already running adapters cannot be cancelled because route has no cancellation
 parameter. Their late resolutions cannot change the returned result. An adapter
 that owns external sockets or timers remains responsible for releasing them.
 
-usd sums finite numeric cost_usd values available from calls completed within
-their deadlines, including calls whose content was refused. Missing or malformed
-costs contribute zero. Costs and models from timed out calls are unavailable.
+usd sums finite numeric cost_usd values available when each call finishes,
+including calls whose content was refused or whose already available reply
+exceeded its deadline. Missing or malformed costs contribute zero. Costs and
+models from calls still pending when their timers expire are unavailable.
 Models are kept when supplied. The rejected array retains role labeled reasons.
 An advocate refusal alone does not reject an otherwise valid review.
 
@@ -137,6 +138,8 @@ The two advocate and reviewer pattern is adapted from
 [TradingAgents by TauricResearch](https://github.com/TauricResearch/TradingAgents),
 licensed under Apache 2.0. This implementation credits that design inspiration.
 No TradingAgents source code, trader or portfolio manager is included.
+This original implementation is MIT licensed, as required for open tools by the
+[Kognessium terms](https://www.kognai.ai/docs/hackathon). See LICENSE.
 
 ## Acceptance coverage
 

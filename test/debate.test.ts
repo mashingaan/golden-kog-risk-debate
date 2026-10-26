@@ -37,6 +37,7 @@ test('A1 advocates run concurrently and reviewer waits for both with the exact r
   const calls: RouteArgs[] = []
   const running = debate(input, {
     mode: 'on',
+    timeoutMs: 1000,
     route: async args => {
       calls.push(args)
       if (args.payload.role === 'sound') return sound.promise
@@ -96,6 +97,17 @@ test('A2 invalid reviewer number clears every debate text and preserves costs an
   assert.deepEqual(result.weight, [])
   assert.deepEqual(result.unknown, [])
   assert.ok(result.rejected.some(reason => reason.includes('999')))
+})
+
+test('A2 large invalid responses are refused without overflowing the call stack', async () => {
+  const text = Array.from({ length: 140000 }, (_, index) => `${index}x`).join('')
+  for (const role of ['sound', 'reviewer'] as const) {
+    const { deps } = fixture({}, { [role]: role === 'reviewer' ? JSON.stringify({ ...review, text }) : text })
+    const result = await debate(input, deps)
+    assert.equal(result.status, role === 'reviewer' ? 'rejected' : 'ok')
+    assert.equal(result[role], role === 'reviewer' ? '' : fallback)
+    assert.ok(result.rejected.length > 130000)
+  }
 })
 
 const forbidden = ['bull', 'bear', 'bullish', 'bearish', 'upside', 'downside target', 'undervalued', 'overvalued', 'accumulate', 'moon', 'buy now', 'sell now', 'price target', 'entry', 'exit', 'take profit', 'not financial advice']
@@ -175,6 +187,24 @@ test('A3 throwing caller checks fail closed without throwing', async () => {
   assert.ok(result.rejected.includes('reviewer: check threw'))
 })
 
+test('A3 retains large caller guard reason arrays without truncating or throwing', async () => {
+  const problems = Array.from({ length: 140000 }, () => 'caller policy')
+  const { deps } = fixture({ check: text => text === 'Custom guard.' ? problems : [] }, { sound: 'Custom guard.' })
+  const result = await debate(input, deps)
+  assert.equal(result.sound, fallback)
+  assert.equal(result.rejected.length, problems.length)
+  assert.ok(result.rejected.every(reason => reason === 'sound: caller policy'))
+})
+
+test('A3 malformed caller guard problems fail closed', async () => {
+  for (const problems of ['problem', [12], {}]) {
+    const { deps } = fixture({ check: () => problems as string[] })
+    const result = await debate(input, deps)
+    assert.equal(result.status, 'rejected')
+    assert.ok(result.rejected.includes('reviewer: check returned invalid problems'))
+  }
+})
+
 test('A4 filters weight by exact ids and preserves unknown and optional tension', async () => {
   const { deps } = fixture({}, { reviewer: JSON.stringify({
     ...review, weight: ['concentration', 'invented', 'lock-risk', 'CONCENTRATION', '__proto__'],
@@ -240,12 +270,36 @@ test('A5 fractional deadlines cannot expire early due to timer rounding', async 
   assert.ok(performance.now() - started >= 25.75)
 })
 
-test('A5 each call gets its own deadline rather than one deadline for the debate', async () => {
-  const result = await debate(input, { mode: 'on', timeoutMs: 150, route: async args => {
-    await new Promise<void>(resolve => setTimeout(resolve, 90))
+test('A5 early timer wakeups wait until the monotonic deadline is exceeded', async context => {
+  let now = 0
+  context.mock.method(performance, 'now', () => now)
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  const running = debate(input, { timeoutMs: 5, route: () => new Promise<RouteResult>(() => {}) })
+  let finished = false
+  void running.then(() => { finished = true })
+  now = 4.5
+  context.mock.timers.tick(5)
+  await new Promise<void>(resolve => setImmediate(resolve))
+  assert.equal(finished, false)
+  now = 5.5
+  context.mock.timers.tick(1)
+  assert.equal((await running).status, 'timeout')
+})
+
+test('A5 each call gets its own deadline rather than one deadline for the debate', async context => {
+  let now = 0
+  context.mock.method(performance, 'now', () => now)
+  context.mock.timers.enable({ apis: ['setTimeout'] })
+  const running = debate(input, { mode: 'on', timeoutMs: 100, route: async args => {
+    await new Promise<void>(resolve => setTimeout(resolve, 60))
     return { content: args.payload.role === 'reviewer' ? JSON.stringify(review) : 'Measured facts.' }
   } })
-  assert.equal(result.status, 'ok')
+  now = 60
+  context.mock.timers.tick(60)
+  await new Promise<void>(resolve => setImmediate(resolve))
+  now = 120
+  context.mock.timers.tick(60)
+  assert.equal((await running).status, 'ok')
 })
 
 test('A5 late rejections are handled after a timeout', async () => {
@@ -357,6 +411,21 @@ test('A6 timeout retains costs of other settled calls', async () => {
   assert.equal(result.status, 'timeout')
   assert.equal(result.usd, 0.25)
   assert.deepEqual(result.models, { sound: 'settled' })
+})
+
+test('A6 deadline failures keep costs and models from replies already available', async () => {
+  for (const role of ['sound', 'reviewer'] as const) {
+    const result = await debate(input, { timeoutMs: 5, route: async args => {
+      if (args.payload.role === role) {
+        const until = performance.now() + 15
+        while (performance.now() < until) {}
+      }
+      return { content: args.payload.role === 'reviewer' ? JSON.stringify(review) : 'Measured facts.', cost_usd: 0.25, model: args.payload.role }
+    } })
+    assert.equal(result.status, 'timeout')
+    assert.equal(result.usd, role === 'reviewer' ? 0.75 : 0.5)
+    assert.equal(result.models[role], role)
+  }
 })
 
 test('A6 malformed adapter responses fail closed and a throwing logger is contained', async () => {
